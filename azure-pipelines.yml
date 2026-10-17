@@ -34,3 +34,12 @@ steps:
 
   - bash: terraform validate -no-color
     displayName: 'Validate Terraform Configuration'
+
+  - task: AzureCLI@2
+    displayName: 'Test Azure Authentication'
+    inputs:
+      azureSubscription: 'terraform-azure-connection'
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        az account show --query "{subscription:name, id:id}" -o table
