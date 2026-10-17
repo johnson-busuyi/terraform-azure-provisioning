@@ -1,0 +1,36 @@
+
+trigger:
+  branches:
+    include:
+      - main
+
+pr:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+  - checkout: self
+    displayName: 'Checkout Terraform Repository'
+
+  - bash: |
+      set -e
+      TERRAFORM_VERSION=1.16.0
+      curl -fsSLo terraform.zip \
+        "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+      unzip -o terraform.zip
+      sudo install terraform /usr/local/bin/terraform
+      terraform version
+    displayName: 'Install Terraform'
+
+  - bash: terraform fmt -check -recursive
+    displayName: 'Check Terraform Formatting'
+
+  - bash: terraform init -backend=false -input=false
+    displayName: 'Initialize Terraform'
+
+  - bash: terraform validate -no-color
+    displayName: 'Validate Terraform Configuration'
