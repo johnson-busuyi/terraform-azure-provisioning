@@ -22,3 +22,17 @@ resource "azurerm_resource_group" "terraform_rg" {
     ManagedBy   = "Terraform"
   }
 }
+
+
+resource "azurerm_storage_account" "terraform_storage" {
+  name                     = "tfstoragejb20261017"
+  resource_group_name      = azurerm_resource_group.terraform_rg.name
+  location                 = azurerm_resource_group.terraform_rg.location
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+
+  tags = {
+    Environment = "Learning"
+    ManagedBy   = "Terraform"
+  }
+}
