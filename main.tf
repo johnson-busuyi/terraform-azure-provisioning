@@ -1,4 +1,14 @@
 terraform {
+  backend "azurerm" {
+    resource_group_name  = "terraform-learning-rg"
+    storage_account_name = "tfstoragejb20261017"
+    container_name       = "tfstate"
+    key                  = "terraform.tfstate"
+
+    use_azuread_auth = true
+    use_msi          = true
+  }
+
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
