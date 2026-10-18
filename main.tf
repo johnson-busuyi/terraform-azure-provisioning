@@ -44,6 +44,6 @@ resource "azurerm_storage_account" "terraform_storage" {
 
   tags = {
     Environment = "Learning"
-   ManagedBy   = "Terraform"
+    ManagedBy   = "Terraform"
   }
 }
