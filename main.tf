@@ -6,7 +6,7 @@ terraform {
     key                  = "terraform.tfstate"
 
     use_azuread_auth = true
-    use_msi          = true
+
   }
 
   required_providers {
