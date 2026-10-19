@@ -11,11 +11,14 @@ pr:
 
 pool:
   vmImage: 'ubuntu-latest'
-  
+
 variables:
   EnableTerraformDeployment: 'false'
 
 stages:
+  # ============================================
+  # STAGE 1: TERRAFORM VALIDATION AND PLAN
+  # ============================================
   - stage: Terraform_Plan
     displayName: 'Terraform Validation and Plan'
     jobs:
@@ -25,25 +28,33 @@ stages:
           - checkout: self
             displayName: 'Checkout Terraform Repository'
 
+          # Install Terraform
           - bash: |
               set -e
               TERRAFORM_VERSION=1.16.0
+
               curl -fsSLo terraform.zip \
                 "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+
               unzip -o terraform.zip
               sudo install terraform /usr/local/bin/terraform
+
               terraform version
             displayName: 'Install Terraform'
 
+          # Check formatting
           - bash: terraform fmt -check -recursive
             displayName: 'Check Terraform Formatting'
 
+          # Initialize without remote backend
           - bash: terraform init -backend=false -input=false
             displayName: 'Initialize Terraform'
 
+          # Validate Terraform configuration
           - bash: terraform validate -no-color
             displayName: 'Validate Terraform Configuration'
 
+          # Authenticate to Azure and generate saved plan
           - task: AzureCLI@2
             displayName: 'Terraform Plan - Remote State'
             inputs:
@@ -57,6 +68,7 @@ stages:
                 export ARM_USE_OIDC=true
                 export ARM_USE_MSI=false
                 export ARM_USE_AZUREAD=true
+
                 export ARM_CLIENT_ID="$servicePrincipalId"
                 export ARM_TENANT_ID="$tenantId"
                 export ARM_OIDC_TOKEN="$idToken"
@@ -65,13 +77,27 @@ stages:
                 echo "Initializing Terraform remote backend..."
                 terraform init -reconfigure -input=false
 
-                echo "Running Terraform Plan..."
-                terraform plan -input=false -no-color
+                echo "Generating and saving Terraform Plan..."
+                terraform plan -input=false -no-color -out=tfplan
 
+                echo "Displaying Terraform Plan..."
+                terraform show -no-color tfplan
+
+          # Publish saved Terraform plan
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish Terraform Plan Artifact'
+            inputs:
+              targetPath: '$(System.DefaultWorkingDirectory)/tfplan'
+              artifact: 'terraform-plan'
+              publishLocation: 'pipeline'
+
+  # ============================================
+  # STAGE 2: MANUAL APPROVAL AND DEPLOYMENT TEST
+  # ============================================
   - stage: Terraform_Deploy
     displayName: 'Terraform Deployment - Approval Required'
     dependsOn: Terraform_Plan
-    condition: eq(variables['EnableTerraformDeployment'], 'true')
+    condition: and(succeeded(), eq(variables['EnableTerraformDeployment'], 'true'))
     jobs:
       - deployment: Deploy
         displayName: 'Protected Terraform Deployment'
