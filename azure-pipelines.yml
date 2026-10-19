@@ -105,11 +105,11 @@ stages:
         strategy:
           runOnce:
             deploy:
-           
               steps:
                 - checkout: self
 
-               - bash: |
+                # Install Terraform for deployment
+                - bash: |
                     set -e
                     TERRAFORM_VERSION=1.16.0
 
@@ -122,10 +122,12 @@ stages:
                     terraform version
                   displayName: 'Install Terraform for Deployment'
 
+                # Download saved Terraform plan
                 - download: current
                   artifact: terraform-plan
                   displayName: 'Download Terraform Plan Artifact'
 
+                # Verify downloaded plan
                 - bash: |
                     set -e
 
@@ -141,4 +143,3 @@ stages:
                     echo "Terraform plan artifact found successfully."
                     echo "Terraform apply is NOT enabled."
                   displayName: 'Verify Downloaded Terraform Plan'
-   
