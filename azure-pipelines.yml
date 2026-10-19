@@ -13,7 +13,7 @@ pool:
   vmImage: 'ubuntu-latest'
   
 variables:
-  EnableTerraformDeployment: 'true'
+  EnableTerraformDeployment: 'false'
 
 stages:
   - stage: Terraform_Plan
