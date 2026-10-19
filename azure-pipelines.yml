@@ -13,7 +13,7 @@ pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  EnableTerraformDeployment: 'true'
+  EnableTerraformDeployment: 'false'
 
 stages:
   # ============================================
@@ -108,6 +108,19 @@ stages:
            
               steps:
                 - checkout: self
+
+               - bash: |
+                    set -e
+                    TERRAFORM_VERSION=1.16.0
+
+                    curl -fsSLo terraform.zip \
+                      "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+
+                    unzip -o terraform.zip
+                    sudo install terraform /usr/local/bin/terraform
+
+                    terraform version
+                  displayName: 'Install Terraform for Deployment'
 
                 - download: current
                   artifact: terraform-plan
