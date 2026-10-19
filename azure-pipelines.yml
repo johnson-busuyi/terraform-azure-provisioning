@@ -1,4 +1,8 @@
 
+# ============================================
+# AZURE DEVOPS TERRAFORM CI/CD PIPELINE
+# ============================================
+
 trigger:
   branches:
     include:
@@ -10,25 +14,33 @@ pr:
       - main
 
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: 'ubuntu-24.04'
 
+# Deployment variable is configured in Azure DevOps UI.
+# Default: false
+# Allow override when running the pipeline.
 
 stages:
+
   # ============================================
   # STAGE 1: TERRAFORM VALIDATION AND PLAN
   # ============================================
+
   - stage: Terraform_Plan
     displayName: 'Terraform Validation and Plan'
+
     jobs:
       - job: Plan
         displayName: 'Validate and Plan'
+
         steps:
           - checkout: self
             displayName: 'Checkout Terraform Repository'
 
           # Install Terraform
           - bash: |
-              set -e
+              set -euo pipefail
+
               TERRAFORM_VERSION=1.16.0
 
               curl -fsSLo terraform.zip \
@@ -40,16 +52,22 @@ stages:
               terraform version
             displayName: 'Install Terraform'
 
-          # Check formatting
-          - bash: terraform fmt -check -recursive
+          # Check Terraform formatting
+          - bash: |
+              set -e
+              terraform fmt -check -recursive
             displayName: 'Check Terraform Formatting'
 
           # Initialize without remote backend
-          - bash: terraform init -backend=false -input=false
+          - bash: |
+              set -e
+              terraform init -backend=false -input=false
             displayName: 'Initialize Terraform'
 
-          # Validate Terraform configuration
-          - bash: terraform validate -no-color
+          # Validate configuration
+          - bash: |
+              set -e
+              terraform validate -no-color
             displayName: 'Validate Terraform Configuration'
 
           # Authenticate to Azure and generate saved plan
@@ -61,7 +79,7 @@ stages:
               scriptLocation: 'inlineScript'
               addSpnToEnvironment: true
               inlineScript: |
-                set -e
+                set -euo pipefail
 
                 export ARM_USE_OIDC=true
                 export ARM_USE_MSI=false
@@ -75,13 +93,13 @@ stages:
                 echo "Initializing Terraform remote backend..."
                 terraform init -reconfigure -input=false
 
-                echo "Generating and saving Terraform Plan..."
+                echo "Generating saved Terraform plan..."
                 terraform plan -input=false -no-color -out=tfplan
 
-                echo "Displaying Terraform Plan..."
+                echo "Displaying Terraform plan..."
                 terraform show -no-color tfplan
 
-          # Publish saved Terraform plan
+          # Publish Terraform plan artifact
           - task: PublishPipelineArtifact@1
             displayName: 'Publish Terraform Plan Artifact'
             inputs:
@@ -90,30 +108,34 @@ stages:
               publishLocation: 'pipeline'
 
   # ============================================
-  # STAGE 2: APPROVAL-PROTECTED DEPLOYMENT
+  # STAGE 2: APPROVAL-PROTECTED TERRAFORM APPLY
   # ============================================
+
   - stage: Terraform_Deploy
     displayName: 'Terraform Deployment - Approval Required'
     dependsOn: Terraform_Plan
-    condition: and(
-      succeeded(),
-      eq(variables['Build.SourceBranch'], 'refs/heads/main'),
-      ne(variables['Build.Reason'], 'Manual'),
-      eq(variables['EnableTerraformDeployment'], 'true')
-      )
+
+    # Only manually started main-branch runs
+    # with deployment explicitly enabled can apply.
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.Reason'], 'Manual'), eq(variables['EnableTerraformDeployment'], 'true'))
+
     jobs:
       - deployment: Deploy
         displayName: 'Protected Terraform Deployment'
         environment: 'terraform-production'
+
         strategy:
           runOnce:
             deploy:
               steps:
-                - checkout: self
 
-                # Install Terraform for deployment
+                - checkout: self
+                  displayName: 'Checkout Terraform Repository'
+
+                # Install matching Terraform version
                 - bash: |
-                    set -e
+                    set -euo pipefail
+
                     TERRAFORM_VERSION=1.16.0
 
                     curl -fsSLo terraform.zip \
@@ -125,18 +147,18 @@ stages:
                     terraform version
                   displayName: 'Install Terraform for Deployment'
 
-                # Download saved Terraform plan
+                # Download plan generated in this run
                 - download: current
                   artifact: terraform-plan
                   displayName: 'Download Terraform Plan Artifact'
 
-                # Verify downloaded plan
+                # Verify plan file exists
                 - bash: |
-                    set -e
-
-                    echo "Checking saved Terraform plan..."
+                    set -euo pipefail
 
                     PLAN_FILE="$(Pipeline.Workspace)/terraform-plan/tfplan"
+
+                    echo "Checking saved Terraform plan..."
 
                     if [ ! -f "$PLAN_FILE" ]; then
                       echo "ERROR: Terraform plan file not found."
@@ -146,7 +168,7 @@ stages:
                     echo "Terraform plan artifact found successfully."
                   displayName: 'Verify Downloaded Terraform Plan'
 
-                # Authenticate, initialize backend, and apply saved plan
+                # Authenticate, initialize backend and apply
                 - task: AzureCLI@2
                   displayName: 'Terraform Apply - Approved Plan'
                   inputs:
@@ -155,7 +177,7 @@ stages:
                     scriptLocation: 'inlineScript'
                     addSpnToEnvironment: true
                     inlineScript: |
-                      set -e
+                      set -euo pipefail
 
                       export ARM_USE_OIDC=true
                       export ARM_USE_MSI=false
@@ -167,7 +189,9 @@ stages:
                       export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
 
                       echo "Authenticating to Azure..."
-                      az account show --query "{name:name,id:id}" -o table
+                      az account show \
+                        --query "{name:name,id:id}" \
+                        -o table
 
                       echo "Initializing Terraform remote backend..."
                       terraform init -reconfigure -input=false
@@ -181,7 +205,7 @@ stages:
                         exit 1
                       fi
 
-                      echo "Checking saved Terraform plan..."
+                      echo "Displaying approved Terraform plan..."
                       terraform show -no-color "$PLAN_FILE"
 
                       echo "Applying approved Terraform plan..."
