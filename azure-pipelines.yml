@@ -12,51 +12,74 @@ pr:
 pool:
   vmImage: 'ubuntu-latest'
 
-steps:
-  - checkout: self
-    displayName: 'Checkout Terraform Repository'
+stages:
+  - stage: Terraform_Plan
+    displayName: 'Terraform Validation and Plan'
+    jobs:
+      - job: Plan
+        displayName: 'Validate and Plan'
+        steps:
+          - checkout: self
+            displayName: 'Checkout Terraform Repository'
 
-  - bash: |
-      set -e
-      TERRAFORM_VERSION=1.16.0
-      curl -fsSLo terraform.zip \
-        "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
-      unzip -o terraform.zip
-      sudo install terraform /usr/local/bin/terraform
-      terraform version
-    displayName: 'Install Terraform'
+          - bash: |
+              set -e
+              TERRAFORM_VERSION=1.16.0
+              curl -fsSLo terraform.zip \
+                "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+              unzip -o terraform.zip
+              sudo install terraform /usr/local/bin/terraform
+              terraform version
+            displayName: 'Install Terraform'
 
-  - bash: terraform fmt -check -recursive
-    displayName: 'Check Terraform Formatting'
+          - bash: terraform fmt -check -recursive
+            displayName: 'Check Terraform Formatting'
 
-  - bash: terraform init -backend=false -input=false
-    displayName: 'Initialize Terraform'
+          - bash: terraform init -backend=false -input=false
+            displayName: 'Initialize Terraform'
 
-  - bash: terraform validate -no-color
-    displayName: 'Validate Terraform Configuration'
+          - bash: terraform validate -no-color
+            displayName: 'Validate Terraform Configuration'
 
-  - task: AzureCLI@2
-    displayName: 'Terraform Plan - Remote State'
-    inputs:
-      azureSubscription: 'terraform-azure-connection'
-      scriptType: 'bash'
-      scriptLocation: 'inlineScript'
-      addSpnToEnvironment: true
-      inlineScript: |
-        set -e
+          - task: AzureCLI@2
+            displayName: 'Terraform Plan - Remote State'
+            inputs:
+              azureSubscription: 'terraform-azure-connection'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              addSpnToEnvironment: true
+              inlineScript: |
+                set -e
 
-        export ARM_USE_OIDC=true
-        export ARM_USE_MSI=false
-        export ARM_USE_AZUREAD=true
-        export ARM_CLIENT_ID="$servicePrincipalId"
-        export ARM_TENANT_ID="$tenantId"
-        export ARM_OIDC_TOKEN="$idToken"
-        export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
+                export ARM_USE_OIDC=true
+                export ARM_USE_MSI=false
+                export ARM_USE_AZUREAD=true
+                export ARM_CLIENT_ID="$servicePrincipalId"
+                export ARM_TENANT_ID="$tenantId"
+                export ARM_OIDC_TOKEN="$idToken"
+                export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
 
-        echo "Initializing Terraform remote backend..."
-        terraform init -reconfigure -input=false
+                echo "Initializing Terraform remote backend..."
+                terraform init -reconfigure -input=false
 
-        echo "Running Terraform Plan..."
-        terraform plan -input=false -no-color
+                echo "Running Terraform Plan..."
+                terraform plan -input=false -no-color
 
+  - stage: Terraform_Deploy
+    displayName: 'Terraform Deployment - Approval Required'
+    dependsOn: Terraform_Plan
+    condition: eq(variables['EnableTerraformDeployment'], 'true')
+    jobs:
+      - deployment: Deploy
+        displayName: 'Protected Terraform Deployment'
+        environment: 'terraform-production'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
 
+                - bash: |
+                    echo "Deployment stage reached."
+                    echo "Terraform apply is not enabled yet."
+                  displayName: 'Deployment Safety Check'
