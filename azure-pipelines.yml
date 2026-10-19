@@ -12,8 +12,6 @@ pr:
 pool:
   vmImage: 'ubuntu-latest'
 
-variables:
-  EnableTerraformDeployment: 'false'
 
 stages:
   # ============================================
