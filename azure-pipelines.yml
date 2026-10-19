@@ -92,12 +92,17 @@ stages:
               publishLocation: 'pipeline'
 
   # ============================================
-  # STAGE 2: MANUAL APPROVAL AND DEPLOYMENT TEST
+  # STAGE 2: APPROVAL-PROTECTED DEPLOYMENT
   # ============================================
   - stage: Terraform_Deploy
     displayName: 'Terraform Deployment - Approval Required'
     dependsOn: Terraform_Plan
-    condition: and(succeeded(), eq(variables['EnableTerraformDeployment'], 'true'))
+    condition: and(
+      succeeded(),
+      eq(variables['Build.SourceBranch'], 'refs/heads/main'),
+      ne(variables['Build.Reason'], 'PullRequest'),
+      eq(variables['EnableTerraformDeployment'], 'true')
+      )
     jobs:
       - deployment: Deploy
         displayName: 'Protected Terraform Deployment'
@@ -141,12 +146,11 @@ stages:
                     fi
 
                     echo "Terraform plan artifact found successfully."
-                    echo "Terraform apply is NOT enabled."
                   displayName: 'Verify Downloaded Terraform Plan'
-                  
-                # Authenticate to Azure and initialize Terraform remote state
+
+                # Authenticate, initialize backend, and apply saved plan
                 - task: AzureCLI@2
-                  displayName: 'Initialize Terraform Backend for Deployment'
+                  displayName: 'Terraform Apply - Approved Plan'
                   inputs:
                     azureSubscription: 'terraform-azure-connection'
                     scriptType: 'bash'
@@ -171,5 +175,18 @@ stages:
                       terraform init -reconfigure -input=false
 
                       echo "Terraform backend initialized successfully."
-                      echo "Terraform apply is NOT enabled."
 
+                      PLAN_FILE="$(Pipeline.Workspace)/terraform-plan/tfplan"
+
+                      if [ ! -f "$PLAN_FILE" ]; then
+                        echo "ERROR: Saved Terraform plan not found."
+                        exit 1
+                      fi
+
+                      echo "Checking saved Terraform plan..."
+                      terraform show -no-color "$PLAN_FILE"
+
+                      echo "Applying approved Terraform plan..."
+                      terraform apply -input=false -no-color "$PLAN_FILE"
+
+                      echo "Terraform deployment completed successfully."
