@@ -105,10 +105,27 @@ stages:
         strategy:
           runOnce:
             deploy:
+           
               steps:
                 - checkout: self
 
+                - download: current
+                  artifact: terraform-plan
+                  displayName: 'Download Terraform Plan Artifact'
+
                 - bash: |
-                    echo "Deployment stage reached."
-                    echo "Terraform apply is not enabled yet."
-                  displayName: 'Deployment Safety Check'
+                    set -e
+
+                    echo "Checking saved Terraform plan..."
+
+                    PLAN_FILE="$(Pipeline.Workspace)/terraform-plan/tfplan"
+
+                    if [ ! -f "$PLAN_FILE" ]; then
+                      echo "ERROR: Terraform plan file not found."
+                      exit 1
+                    fi
+
+                    echo "Terraform plan artifact found successfully."
+                    echo "Terraform apply is NOT enabled."
+                  displayName: 'Verify Downloaded Terraform Plan'
+   
